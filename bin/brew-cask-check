@@ -1,0 +1,211 @@
+#!/usr/bin/env ruby
+# brew-cask-check
+
+# 20261102
+# 0.0.0
+
+# Usage:
+# 1. In a clone of Homebrew/homebrew-cask, upon an edited cask:
+#  `brew cask-check Casks/t/tiger-trade.rb`
+#   It runs brew style and brew audit --online upon it, as Homebrew asks before a pull request.
+# 2. To install and uninstall it as well:
+#  `brew cask-check -i Casks/t/tiger-trade.rb`
+#   Where the cask was installed beforehand, the official one is put back afterward.
+# 3. For a cask new to Homebrew/homebrew-cask:
+#  `brew cask-check -n Casks/t/tiger-trade.rb`
+
+# Notes:
+# 1. brew checks only casks which are in a tap, and where homebrew/cask isn't tapped, brew installing casks from the API, a clone's cask is in none. So it is copied into a tap made for the purpose, checked there, and the tap removed.
+# 2. brew loads no cask from an untrusted tap, so the cask is trusted while it is checked, and brew's trusted entries end as they began.
+# 3. brew is run in the environment it is given, so as HOMEBREW_CASK_OPTS, --appdir among them, holds for the install.
+
+gem 'switches.rb'
+
+require 'etc'
+require 'fileutils'
+require 'json'
+require 'switches.rb'
+
+BREW_ENVIRONMENT = {'HOMEBREW_NO_AUTO_UPDATE' => '1'}
+DEFAULT_TAP_REPOSITORY = 'cask-check'
+TRUST_SWITCHES = {'taps' => '--tap', 'formulae' => '--formula', 'casks' => '--cask', 'commands' => '--command'}
+
+def default_tap
+  "#{Etc.getpwuid.name.downcase}/#{DEFAULT_TAP_REPOSITORY}"
+end
+
+def usage
+  puts "brew-cask-check - Run Homebrew's checks upon a cask from a clone of Homebrew/homebrew-cask."
+  puts
+  puts "Usage: brew cask-check [options] <cask-file>"
+  puts
+  puts "Options:"
+  puts "  -i, --install       Install and uninstall it as well, putting back the official one where it was installed"
+  puts "  -n, --new           Audit it as a cask new to Homebrew/homebrew-cask"
+  puts "  -t, --tap-name TAP  The tap it is checked in, which mustn't exist yet (default: #{default_tap})"
+  puts "  -h, --help          Show this help"
+  puts
+  puts "Exits 1 where any check failed."
+end
+
+def switches
+  @switches ||= Switches.new do |s|
+    s.boolean(:i, :install){'Install and uninstall it as well'}
+    s.boolean(:n, :new){'Audit it as a cask new to Homebrew/homebrew-cask'}
+    s.optional(:t, :tap_name, default: default_tap){"The tap it is checked in, which mustn't exist yet"}
+    s.perform(:h, :help?) do
+      usage
+      exit
+    end
+  end
+end
+
+def validate_args
+  if ARGV.length != 1
+    usage
+    exit 1
+  end
+end
+
+def cask_filepath
+  @cask_filepath ||= File.expand_path(ARGV[0])
+end
+
+def validate_cask_filepath
+  abort("There is no cask at #{ARGV[0]}.") unless File.file?(cask_filepath) && cask_filepath.end_with?('.rb')
+end
+
+def brew(*arguments, **options)
+  system(BREW_ENVIRONMENT, 'brew', *arguments, **options)
+end
+
+def brew_output(*arguments)
+  IO.popen(BREW_ENVIRONMENT, ['brew', *arguments], &:read)
+end
+
+def tap
+  switches.tap_name
+end
+
+def tap_directory
+  @tap_directory ||= brew_output('--repository', tap).strip
+end
+
+# Removing a tap which was there beforehand would lose whatever is in it, so one is refused rather than borrowed.
+def validate_tap_absent
+  abort("#{tap} exists already. Name another with --tap-name.") if File.exist?(tap_directory)
+end
+
+def validate_inputs
+  validate_args
+  validate_cask_filepath
+  validate_tap_absent
+end
+
+def token
+  @token ||= File.basename(cask_filepath, '.rb')
+end
+
+def tapped_cask_name
+  "#{tap}/#{token}"
+end
+
+def tapped_cask_filepath
+  File.join(tap_directory, 'Casks', token[0], "#{token}.rb")
+end
+
+def trusted_entries
+  JSON.parse(brew_output('trust', '--json=v1'))
+end
+
+def trusted_entries_beforehand
+  @trusted_entries_beforehand ||= trusted_entries
+end
+
+def installed_beforehand?
+  return @installed_beforehand if defined?(@installed_beforehand)
+  @installed_beforehand = brew('list', '--cask', token, out: File::NULL, err: File::NULL)
+end
+
+def note_the_state_beforehand
+  trusted_entries_beforehand
+  installed_beforehand?
+end
+
+def create_tap
+  brew('tap-new', tap, '--no-git', out: File::NULL) || abort("brew tap-new #{tap} failed.")
+  FileUtils.mkdir_p(File.dirname(tapped_cask_filepath))
+  FileUtils.cp(cask_filepath, tapped_cask_filepath)
+end
+
+def results
+  @results ||= {}
+end
+
+def check(name, *arguments)
+  puts "", "==> #{name}: brew #{arguments.join(' ')}"
+  results[name] = brew(*arguments)
+end
+
+def audit_arguments
+  ['audit', '--cask', '--online', *('--new' if switches.new?), tapped_cask_name]
+end
+
+def install_and_uninstall
+  check('install', installed_beforehand? ? 'reinstall' : 'install', '--cask', tapped_cask_name)
+  check('uninstall', 'uninstall', '--cask', tapped_cask_name)
+  check('reinstall official', 'install', '--cask', "homebrew/cask/#{token}") if installed_beforehand?
+end
+
+def run_checks
+  check('style', 'style', '--cask', tapped_cask_name)
+  brew('trust', '--cask', tapped_cask_name, out: File::NULL)
+  check('audit', *audit_arguments)
+  install_and_uninstall if switches.install?
+end
+
+def restore_trusted_entries
+  trusted_entries.each do |type, entries|
+    (entries - trusted_entries_beforehand.fetch(type, [])).each{|entry| brew('untrust', TRUST_SWITCHES[type], entry, out: File::NULL)}
+    (trusted_entries_beforehand.fetch(type, []) - entries).each{|entry| brew('trust', TRUST_SWITCHES[type], entry, out: File::NULL)}
+  end
+end
+
+def trusted_entries_restored?
+  trusted_entries == trusted_entries_beforehand
+end
+
+# brew untap loads the casks in a tap, and refuses an untrusted one, so the cask is trusted again before the tap goes, and the trust is undone after.
+def clean_up
+  brew('trust', '--cask', tapped_cask_name, out: File::NULL, err: File::NULL)
+  brew('untap', tap, out: File::NULL) || warn("brew untap #{tap} failed. Untap it once whatever kept it is dealt with.")
+  restore_trusted_entries
+  warn("brew's trusted entries differ from those beforehand. Compare `brew trust --json=v1` with:\n#{JSON.pretty_generate(trusted_entries_beforehand)}") unless trusted_entries_restored?
+end
+
+def in_tap
+  create_tap
+  yield
+ensure
+  clean_up
+end
+
+def report
+  puts "", "==> #{token}"
+  results.each{|name, passed| puts "#{name}: #{passed ? 'passed' : 'failed'}"}
+end
+
+def passed?
+  results.values.all?
+end
+
+def main
+  switches
+  validate_inputs
+  note_the_state_beforehand
+  in_tap{run_checks}
+  report
+  exit 1 unless passed?
+end
+
+main

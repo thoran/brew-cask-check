@@ -1,0 +1,11 @@
+# CHANGELOG
+
+## 20261102
+
+0.0.0: Run brew style, brew audit --online and, optionally, an install and uninstall upon a cask from a clone of Homebrew/homebrew-cask, in a tap made for the purpose.
+
+1. + bin/brew-cask-check
+2. + test/brew-cask-check_test.rb
+3. + README.md
+4. + LICENSE
+5. + Gemfile
