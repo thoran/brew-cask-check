@@ -1,7 +1,7 @@
 # test/brew-cask-check_test.rb
 
-# 20261102
-# 0.0.0
+# 20261104
+# 0.1.0
 
 # Each test runs brew-cask-check as a subprocess with a fake brew first on the
 # path, and asserts upon the calls made of it and the state it is left in. The
@@ -215,6 +215,40 @@ describe 'brew-cask-check' do
       status, output = cask_check
       _(status).must_equal 1
       _(output).must_include 'Usage: brew cask-check'
+    end
+  end
+
+  it 'shows the help, --version among the options, with -h and --help, calling no brew' do
+    with_fake_brew do
+      ['-h', '--help'].each do |switch|
+        status, output = cask_check(switch)
+        _(status).must_equal 0
+        _(output).must_include 'Usage: brew cask-check'
+        _(output).must_match(/^ +--version +Show the version$/)
+      end
+      _(File.exist?(File.join(fake_brew_directory, 'calls'))).must_equal false
+    end
+  end
+
+  it 'shows the version given in the header, with --version, calling no brew' do
+    with_fake_brew do
+      version = File.read(BIN)[/^# (\d+\.\d+\.\d+)$/, 1]
+      status, output = cask_check('--version', 'Casks/e/example.rb')
+      _(status).must_equal 0
+      _(output).must_equal "brew-cask-check #{version}\n"
+      _(File.exist?(File.join(fake_brew_directory, 'calls'))).must_equal false
+    end
+  end
+
+  it 'refuses -v, -V, and an abbreviated switch, as unknown, calling no brew' do
+    with_fake_brew do
+      ['-v', '-V', '--inst'].each do |switch|
+        status, output = cask_check(switch, 'Casks/e/example.rb')
+        _(status).must_equal 1
+        _(output).must_include "invalid option: #{switch}"
+        _(output).wont_include 'brew-cask-check 0'
+      end
+      _(File.exist?(File.join(fake_brew_directory, 'calls'))).must_equal false
     end
   end
 end

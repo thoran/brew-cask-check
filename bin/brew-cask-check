@@ -1,8 +1,8 @@
 #!/usr/bin/env ruby
 # brew-cask-check
 
-# 20261102
-# 0.0.0
+# 20261104
+# 0.1.0
 
 # Usage:
 # 1. In a clone of Homebrew/homebrew-cask, upon an edited cask:
@@ -26,6 +26,8 @@ require 'fileutils'
 require 'json'
 require 'switches.rb'
 
+VERSION = '0.1.0'
+
 BREW_ENVIRONMENT = {'HOMEBREW_NO_AUTO_UPDATE' => '1'}
 DEFAULT_TAP_REPOSITORY = 'cask-check'
 TRUST_SWITCHES = {'taps' => '--tap', 'formulae' => '--formula', 'casks' => '--cask', 'commands' => '--command'}
@@ -43,6 +45,7 @@ def usage
   puts "  -i, --install       Install and uninstall it as well, putting back the official one where it was installed"
   puts "  -n, --new           Audit it as a cask new to Homebrew/homebrew-cask"
   puts "  -t, --tap-name TAP  The tap it is checked in, which mustn't exist yet (default: #{default_tap})"
+  puts "      --version       Show the version"
   puts "  -h, --help          Show this help"
   puts
   puts "Exits 1 where any check failed."
@@ -50,9 +53,14 @@ end
 
 def switches
   @switches ||= Switches.new do |s|
+    s.require_exact = true
     s.boolean(:i, :install){'Install and uninstall it as well'}
     s.boolean(:n, :new){'Audit it as a cask new to Homebrew/homebrew-cask'}
     s.optional(:t, :tap_name, default: default_tap){"The tap it is checked in, which mustn't exist yet"}
+    s.perform(:version) do
+      puts "brew-cask-check #{VERSION}"
+      exit
+    end
     s.perform(:h, :help?) do
       usage
       exit
