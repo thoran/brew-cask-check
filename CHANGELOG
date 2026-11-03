@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 20261104
+
+0.1.0: + --version
+
+1. + VERSION
+2. ~ switches(): + s.perform(:version), which prints the version and exits.
+3. ~ switches(): + s.require_exact = true, since otherwise OptionParser completes -v to --version, and abbreviations of the long switches are refused with it.
+4. ~ usage(): + --version.
+5. ~ README.md: Options + --version.
+6. ~ test/brew-cask-check_test.rb: + --version prints the header's version and exits 0; -h and --help list --version and exit 0; -v, -V and --inst are refused as invalid options and exit 1; none calls brew.
+7. ~ brew-cask-check: /0.0.0/0.1.0/
+
 ## 20261102
 
 0.0.0: Run brew style, brew audit --online and, optionally, an install and uninstall upon a cask from a clone of Homebrew/homebrew-cask, in a tap made for the purpose.

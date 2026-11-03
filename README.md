@@ -43,6 +43,7 @@ Where the cask was installed beforehand, it is reinstalled from the edited cask,
 | `-i`, `--install` | — | Install and uninstall it as well |
 | `-n`, `--new` | — | Audit it as a cask new to Homebrew/homebrew-cask, with `--new` |
 | `-t`, `--tap-name` | user/repository | The tap it is checked in, `<user>/cask-check` by default |
+| `--version` | — | Show the version |
 | `-h`, `--help` | — | Show the help |
 
 ## Why it's wanted
